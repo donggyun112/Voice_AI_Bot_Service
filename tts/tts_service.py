@@ -25,7 +25,7 @@ class TTSPipecService(TTSService):
 	def __init__(
 		self,
 		*,
-		server_address: str = "211.105.40.72",
+		server_address: str = "121.135.134.82",
 		command_port: int = 5555,
 		audio_port: int = 5556,
 		default_voice: str = "KR",

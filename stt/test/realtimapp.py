@@ -125,18 +125,18 @@ class STTTester:
         # 최종 결과 처리
         _, _, final_text, _ = self.processor.finish()
         
-        print("\n=== 최종 인식 결과 ===")
-        if final_text:
-            print(final_text)
-        else:
-            print("인식된 텍스트 없음")
-        print("======================")
+        # print("\n=== 최종 인식 결과 ===")
+        # if final_text:
+        #     print(final_text)
+        # else:
+        #     print("인식된 텍스트 없음")
+        # print("======================")
 
 
 def main():
     """메인 함수"""
     parser = argparse.ArgumentParser(description='Lightning Whisper MLX 테스트')
-    parser.add_argument('--model', default='small', choices=['tiny', 'base', 'small', 'medium', 'large'],
+    parser.add_argument('--model', default='small', choices=['tiny', 'base', 'small', 'medium', 'large-v3-turbo'],
                        help='모델 크기 (default: small)')
     
     args = parser.parse_args()

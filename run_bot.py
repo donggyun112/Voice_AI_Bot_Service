@@ -17,12 +17,17 @@ from pipecat.transports.network.small_webrtc import SmallWebRTCTransport
 from pipecat.transports.network.webrtc_connection import SmallWebRTCConnection
 from pipecat.processors.frameworks.rtvi import RTVIConfig, RTVIObserver, RTVIProcessor
 from pipecat.services.deepgram.tts import DeepgramTTSService
+from pipecat.services.groq.llm import GroqLLMService
 from deepgram import LiveOptions
 from typing import Optional
 import asyncio
 import logging
 import os
-
+from pipecat.processors.aggregators.llm_response import LLMUserAggregatorParams
+from pipecat.processors.aggregators.llm_response import (
+    LLMAssistantResponseAggregator,
+    LLMUserResponseAggregator,
+)
 
 
 async def run_bot(connection: SmallWebRTCConnection, transport: SmallWebRTCTransport, pcs):
@@ -35,13 +40,13 @@ async def run_bot(connection: SmallWebRTCConnection, transport: SmallWebRTCTrans
 		
 
 		llm_model = "gemini-2.0-flash-lite"
-		llm_system_prompt = "You are a fast, low-latency chatbot. Respond to what the user said in a creative and helpful way, but keep responses short and legible. Ensure responses contain only words. Check again that you have not included special characters other than '?' or '!'."
+		llm_system_prompt = ""
 		tts_speed = 1.2
 
 		llm = GoogleLLMService(
 			api_key=os.getenv("GEMINI_API_KEY"),
 			model=llm_model,
-			params=GoogleLLMService.InputParams(temperature=1, language=Language.KO_KR, thinking_budget=0),
+			params=GoogleLLMService.InputParams(temperature=0.7, language=Language.KO_KR, thinking_budget=0),
 			system_prompt=llm_system_prompt
 		)
 		
@@ -53,21 +58,16 @@ async def run_bot(connection: SmallWebRTCConnection, transport: SmallWebRTCTrans
 				syncAudio=True,
 				handleSilence=True,
 				maxSessionLength=3000,
-				maxIdleTime=30
+				maxIdleTime=50
 			),
-			latency_interval=0
+			latency_interval=10
 		)
 
-		# tts = TTSPipecService(
-		# 	voice="KR",
-		# 	speed=tts_speed,
-		# 	Language=Language.KO,
-		# )
-
-		tts = DeepgramTTSService(
-			api_key=os.getenv("DEEPGRAM_API_KEY"),
-			voice="aura-helios-en",
-			sample_rate=24000
+		tts = TTSPipecService(
+			voice="KR",
+			speed=tts_speed,
+			Language=Language.KO,
+			# server_address="localhost"
 		)
 			
 		
@@ -96,33 +96,24 @@ async def run_bot(connection: SmallWebRTCConnection, transport: SmallWebRTCTrans
 			await result_callback(weather_data)
 
 
-		system_prompt = """특수문자를 사용하면 안됩니다.[절대사용하지말아야할 문자 : *, / ]저는 한국인을 위한 영어 표현 코치 AI 에이전트입니다. 한국어 질문에 영어 표현과 간단한 한국어 설명을 제공합니다. 사용자의 한국어 입력을 이해하고 적절한 영어 표현을 자연스러운 발음으로 들려줍니다.
+		system_prompt = """단일 문장을 사용하세요, 대화형 문장을 사용하세요, 특수문자를 사용하지마세요, 영어로 예시를 들때에는 구체적인 예시를 사용하고 영어로만 설명합니다 예를 들어 이름이 들어가야 되면 Emily를 이름으로 사용합니다 이와 같이 나머지 직업 및 특정하기 힘든 영역에 대해 구체적으로 특정하여 대답을 해줍니다. 저는 한국인을 위한 영어 표현 코치 AI 에이전트입니다. 모든 응답은 자연스러운 대화체로 작성하며, 친근하고 편안한 톤으로 소통합니다.
+
+한국어 질문에 대해 적절한 영어 표현과 간단한 한국어 설명을 자연스러운 문장으로 제공합니다. 사용자의 한국어 입력을 이해하고 적절한 영어 표현을 자연스러운 발음으로 들려줍니다.
+
 날씨, 영어 표현, 간단한 회화 등 일상 질문에 답변하며, 특히 비즈니스, 여행, 일상 영어 표현에 특화되어 있습니다. STT로 인한 오타나 인식 오류가 있더라도 문맥을 고려해 의도를 파악합니다.
-한국어 또는 영어로만 답변하며, 깔끔하고 자연스러운 문장으로 TTS에 최적화된 응답을 제공합니다 구체적인 씬 예시에 맞는 질문을 받는다면 구체적인 씬 예시의 답변을 제공합니다.
-시나리오 정보:
-- 비즈니스 영어: 회의, 이메일, 프레젠테이션 표현
-- 여행 영어: 호텔, 레스토랑, 교통, 쇼핑 관련 표현
-- 일상 영어: 인사, 소개, 취미, 날씨 대화
 
-구체적인 씬 예시:
-처음 인사말 :
+한국어와 영어를 자연스럽게 섞어가며 대화하듯 답변하고, TTS에 최적화된 편안한 말투로 응답합니다. 구체적인 상황 예시에 맞는 질문을 받으면 해당 상황에 딱 맞는 실용적인 답변을 제공합니다.
+
+전문 분야는 비즈니스 영어에서 회의나 이메일, 프레젠테이션 표현을 다루고, 여행 영어에서는 호텔이나 레스토랑, 교통, 쇼핑 관련 표현을 제공하며, 일상 영어로는 인사나 소개, 취미, 날씨 대화를 도와드립니다.
+
+처음 만날 때는 이렇게 인사해주세요:
 "안녕하세요! 영어 표현 코치 AI입니다. 어떤 영어 표현이 필요하신가요?"
-[비즈니스 영어 씬]
-사용자: 외국 동료에게 프로젝트 지연을 알리는 이메일을 어떻게 쓰면 좋을까요?
-AI 코치: 프로젝트 지연 안내 이메일은 다음과 같이 작성할 수 있습니다:
-"I regret to inform you that there will be a delay in our project timeline due to technical issues. The new expected completion date is May 25th."
 
-[여행 영어 씬]
-사용자: 택시 기사에게 호텔로 데려다 달라고 하려면 뭐라고 해야 하나요?
-AI 코치: "Could you take me to Hotel Metropole, please? It's on Rue de Lyon."
+비즈니스 상황에서는 예를 들어 외국 동료에게 프로젝트 지연을 알리는 이메일 문의가 오면 "프로젝트 지연 안내 이메일은 이렇게 작성하시면 좋을 것 같아요. I regret to inform you that there will be a delay in our project timeline due to technical issues. The new expected completion date is May 25th. 이런 식으로 정중하게 상황을 설명하고 새로운 일정을 알려주시면 됩니다"라고 답변합니다.
 
-[일상 영어 씬 - 인터럽트 기능 포함]
-사용자: 날씨에 대해 대화할 때 어떤 표현을 쓸 수 있나요?
-AI 코치: "The weather is really nice today, isn't it?"
-동료: "Yes, it's beautiful! Perfect blue skies."
-AI 코치: 이에 대해 이렇게 이어갈 수 있어요: "I heard it's supposed to stay this way all week. I'm thinking about having a picnic this weekend."
-사용자: 비가 올 때는요?
-AI 코치: "This rain is really coming down heavily, isn't it? I forgot my umbrella today."
+여행 상황에서는 택시 기사에게 호텔로 데려다 달라는 표현을 물어보면 "Could you take me to Hotel Metropole, please? It's on Rue de Lyon. 이렇게 정중하게 부탁하시면 되고, 호텔 이름과 위치를 함께 말해주시면 더 좋아요"라고 설명합니다.
+
+일상 대화에서 날씨 이야기를 할 때는 "오늘 날씨 정말 좋네요 하고 싶으시면 The weather is really nice today, isn't it? 라고 하시면 되고, 상대방이 Yes, it's beautiful! Perfect blue skies 라고 답하면 I heard it's supposed to stay this way all week. I'm thinking about having a picnic this weekend 이렇게 자연스럽게 이어가실 수 있어요. 비가 올 때는 This rain is really coming down heavily, isn't it? I forgot my umbrella today 같은 표현을 쓰시면 됩니다"라고 상황별로 친근하게 알려드립니다.
 """
 		tools = ToolsSchema(standard_tools=[weather_function])
 		context = OpenAILLMContext(
@@ -134,6 +125,16 @@ AI 코치: "This rain is really coming down heavily, isn't it? I forgot my umbre
 			],
 			tools=tools,
 		)
+		messages = [
+			{
+				"role": "system",
+				"content": system_prompt,
+			}
+		]
+		# tma_in = LLMUserResponseAggregator(messages)
+		# tma_out = LLMAssistantResponseAggregator(messages)
+
+
 		llm.register_function("get_current_weather", fetch_weather)
 		agg = llm.create_context_aggregator(context=context)
 
@@ -150,7 +151,7 @@ AI 코치: "This rain is really coming down heavily, isn't it? I forgot my umbre
 			tts,
 			simli,
 			transport.output(),
-			agg.assistant()
+			agg.assistant(),
 		])
 
 		pipeline_task = PipelineTask(
